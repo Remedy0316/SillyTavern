@@ -3,6 +3,7 @@ import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
+import { getIpAddress } from '../express-common.js';
 
 const LOGIN_PATH = '/basic-auth/login';
 const PUBLIC_ASSETS = new Map([
@@ -40,10 +41,11 @@ function safeDestination(value) {
  * @param {string} options.publicRoot Bundled public directory
  * @param {boolean} [options.secureCookie] Require HTTPS cookies
  * @param {number} [options.sessionHours] Absolute session lifetime
- * @param {number} [options.maxAttempts] Failed attempts per minute per socket IP
+ * @param {number} [options.maxAttempts] Failed attempts per minute per client IP
+ * @param {boolean} [options.preferRealIpHeader] Include forwarded IP headers in the rate-limit key (same as upstream Basic Auth)
  * @returns {import('express').Router} Authentication gate
  */
-export function createBasicAuthLogin({ getCredentials, publicRoot, secureCookie = true, sessionHours = 168, maxAttempts = 5 }) {
+export function createBasicAuthLogin({ getCredentials, publicRoot, secureCookie = true, sessionHours = 168, maxAttempts = 5, preferRealIpHeader = false }) {
     if (!Number.isFinite(sessionHours) || sessionHours <= 0 || sessionHours > 720) {
         throw new Error('basicAuthLoginSessionHours must be between 0 (exclusive) and 720.');
     }
@@ -104,7 +106,7 @@ export function createBasicAuthLogin({ getCredentials, publicRoot, secureCookie 
             }
 
             const checkCredentials = async (username, password) => {
-                const key = request.socket.remoteAddress || 'unknown';
+                const key = getIpAddress(request, preferRealIpHeader);
                 await limiter.consume(key);
                 const usernameMatches = equal(username, credentials.username);
                 const passwordMatches = equal(password, credentials.password);

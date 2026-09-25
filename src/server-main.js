@@ -124,6 +124,7 @@ if (basicAuthLoginPage) {
         secureCookie: getConfigValue('basicAuthLoginSecureCookie', true, 'boolean'),
         sessionHours: getConfigValue('basicAuthLoginSessionHours', 168, 'number'),
         maxAttempts: getConfigValue('rateLimiting.basicAuthMaxAttempts', 5, 'number'),
+        preferRealIpHeader: getConfigValue('rateLimiting.preferRealIpHeader', false, 'boolean'),
     }));
 }
 

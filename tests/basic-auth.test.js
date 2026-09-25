@@ -118,6 +118,31 @@ describe('shared Basic Auth form gate', () => {
         expect(response.headers.has('retry-after')).toBe(true);
     });
 
+    test('keys the rate limiter by forwarded IP when preferRealIpHeader is enabled', async () => {
+        server.closeAllConnections();
+        await new Promise(resolve => server.close(resolve));
+        // Tests have no config.yaml; supply the forwarded-header settings via env overrides.
+        const env = {
+            SILLYTAVERN_FORWARDEDHEADERS_XREALIP: 'true',
+            SILLYTAVERN_FORWARDEDHEADERS_CFCONNECTINGIP: 'false',
+            SILLYTAVERN_FORWARDEDHEADERS_XFORWARDEDFOR: 'true',
+        };
+        Object.assign(process.env, env);
+        try {
+            await start({ preferRealIpHeader: true });
+            const attempt = ip => fetch(`${origin}/api/test`, {
+                headers: { Authorization: `Basic ${Buffer.from('wrong:wrong').toString('base64')}`, 'x-forwarded-for': ip },
+            });
+            for (let i = 0; i < 5; i++) {
+                expect((await attempt('1.2.3.4')).status).toBe(401);
+            }
+            expect((await attempt('1.2.3.4')).status).toBe(429);
+            expect((await attempt('5.6.7.8')).status).toBe(401);
+        } finally {
+            for (const key of Object.keys(env)) delete process.env[key];
+        }
+    });
+
     test('preserves Basic headers, including colon-containing passwords', async () => {
         const response = await fetch(`${origin}/api/test`, {
             headers: { Authorization: `Basic ${Buffer.from('test-user:test:password').toString('base64')}` },
