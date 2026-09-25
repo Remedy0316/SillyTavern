@@ -4,6 +4,9 @@ LLM Frontend for Power Users
 
 ## Optional Basic Auth Login Page
 
+For a separate Railway test project, follow the
+[step-by-step deployment guide](RAILWAY-DEPLOY.md).
+
 This fork includes a standalone login page for single-user deployments. It is
 disabled by default. It uses the existing `basicAuthUser.username` and
 `basicAuthUser.password` settings, including their environment overrides:
