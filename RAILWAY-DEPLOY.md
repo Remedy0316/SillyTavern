@@ -82,6 +82,10 @@ SILLYTAVERN_SECURITYOVERRIDE=false
 SILLYTAVERN_SSL_ENABLED=false
 SILLYTAVERN_BROWSERLAUNCH_ENABLED=false
 SILLYTAVERN_RATELIMITING_BASICAUTHMAXATTEMPTS=5
+SILLYTAVERN_RATELIMITING_PREFERREALIPHEADER=true
+SILLYTAVERN_FORWARDEDHEADERS_XREALIP=true
+SILLYTAVERN_FORWARDEDHEADERS_XFORWARDEDFOR=false
+SILLYTAVERN_FORWARDEDHEADERS_CFCONNECTINGIP=false
 ```
 
 Then add these two variables individually:
@@ -112,6 +116,12 @@ public deployment.
   browser sends the authentication cookie only over HTTPS.
 - ST's normal CSRF protection remains enabled. There is no need to enable a
   security override, global proxy trust, or permissive CORS for this setup.
+- `SILLYTAVERN_RATELIMITING_PREFERREALIPHEADER=true` gives each visitor their
+  own failed-login counter. Without it, every request arrives from Railway's
+  proxy address, so five wrong guesses from anyone lock out everyone, including
+  you, for a minute. Railway's edge sets `X-Real-IP` to the client's address, so
+  only that header is enabled; `X-Forwarded-For` and `CF-Connecting-IP` are
+  turned off because a client can supply them itself.
 - The session lifetime is seven days, measured from login. Restarting or
   redeploying the server also ends all login-page sessions.
 
@@ -319,9 +329,13 @@ example. If you later connect to a backend on a Railway private network, allow
 only the specific private destinations you need and retest. This outbound filter
 is different from the incoming `SILLYTAVERN_WHITELISTMODE` setting in Step 3.
 
-The form-login rate limiter uses the socket IP rather than trusting arbitrary
-forwarding headers. Visitors behind Railway's proxy may share a limit bucket.
-Keep the limiter enabled, and consider Railway edge protections where available
+The form-login rate limiter keys failed attempts by the `X-Real-IP` header that
+Railway's edge sets, as configured in Step 3. If you remove
+`SILLYTAVERN_RATELIMITING_PREFERREALIPHEADER=true`, it falls back to the socket
+IP, which is Railway's proxy for every visitor, so all visitors share one limit.
+Only enable forwarding headers that your proxy sets itself; do not enable
+`X-Forwarded-For` or `CF-Connecting-IP` unless a proxy in front of ST overwrites
+them. Keep the limiter enabled, and consider Railway edge protections where available
 for additional protection against abusive traffic. Authentication cannot prevent
 all denial-of-service attempts or undo a stolen session cookie.
 

@@ -18,7 +18,16 @@ To enable it on Railway, keep your existing strong credentials and set:
 ```text
 SILLYTAVERN_BASICAUTHLOGINPAGE=true
 SILLYTAVERN_BASICAUTHLOGINSECURECOOKIE=true
+SILLYTAVERN_RATELIMITING_PREFERREALIPHEADER=true
+SILLYTAVERN_FORWARDEDHEADERS_XREALIP=true
+SILLYTAVERN_FORWARDEDHEADERS_XFORWARDEDFOR=false
+SILLYTAVERN_FORWARDEDHEADERS_CFCONNECTINGIP=false
 ```
+
+The last four lines give each visitor a separate failed-login counter, using the
+`X-Real-IP` header that Railway's edge sets. Without them, all visitors share
+Railway's proxy address, so a few wrong guesses from anyone lock everyone out
+for a minute.
 
 The existing `listen` and `basicAuthMode` settings must be enabled, and
 `enableUserAccounts` and `perUserBasicAuth` must remain disabled. Unsupported
@@ -59,9 +68,11 @@ enabling global proxy trust. For loopback-only HTTP testing, explicitly set
 	clear credentials previously cached by a browser. A private window avoids
 	previously cached Basic Auth when trying the new page.
 - Failed form and Basic-header attempts share `rateLimiting.basicAuthMaxAttempts`
-	(default: five per minute). This mode requires a positive integer and uses the
-	socket IP, not spoofable forwarding headers. Behind Railway's proxy, visitors
-	can share a rate-limit bucket. Platform-level rate limiting is recommended
+	(default: five per minute). This mode requires a positive integer. Attempts
+	are counted per socket IP by default. With `rateLimiting.preferRealIpHeader`
+	enabled, they are counted per client IP from the headers enabled under
+	`forwardedHeaders`, the same as upstream Basic Auth. Enable only headers your
+	proxy overwrites (on Railway, `X-Real-IP`). Platform-level rate limiting is recommended
 	for additional protection against public traffic and denial of service.
 - This mode is intended for one running ST instance. Multiple replicas would
 	require a shared session store. Redeployments require signing in again.
