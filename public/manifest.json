@@ -2,6 +2,7 @@
     "name": "SillyTavern",
     "short_name": "SillyTavern",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
     "theme_color": "#202124",
     "background_color": "#202124",

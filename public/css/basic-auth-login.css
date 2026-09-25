@@ -1,0 +1,93 @@
+@font-face {
+    font-family: 'Gate Icons';
+    src: url('/basic-auth/assets/icons.woff2') format('woff2');
+    font-display: block;
+}
+
+:root {
+    color-scheme: light;
+    --paper: #f4f6f2;
+    --ink: #202b25;
+    --muted: #59675e;
+    --accent: #246146;
+    --accent-hover: #184b34;
+    --line: #b8c8bd;
+    --error: #a12e37;
+    font-family: 'Trebuchet MS', 'Noto Sans', sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    letter-spacing: 0;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    min-height: 100svh;
+    background-image: linear-gradient(90deg, transparent 49.9%, #24614606 50%, transparent 50.1%),
+        repeating-linear-gradient(0deg, transparent 0 47px, #24614608 47px 48px);
+}
+
+button, input { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: 0.65; }
+[hidden] { display: none !important; }
+
+.entrance {
+    min-height: 100svh;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 32px 48px 24px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 1;
+}
+
+.brand { display: flex; align-items: center; gap: 14px; font-size: 14px; color: var(--muted); }
+.brand img { width: 44px; height: 44px; object-fit: contain; }
+.welcome { width: 100%; max-width: 430px; margin: auto; padding: 56px 0; animation: arrive 450ms ease-out both; }
+.eyebrow { color: var(--accent); text-transform: uppercase; font-size: 12px; font-weight: bold; margin: 0 0 16px; }
+h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 52px; line-height: 1.1; font-weight: normal; margin: 0; overflow-wrap: anywhere; }
+.intro { font-size: 16px; color: var(--muted); margin: 18px 0 36px; line-height: 1.5; }
+.field { margin-bottom: 22px; }
+label { display: block; font-size: 14px; font-weight: bold; margin-bottom: 9px; }
+input {
+    width: 100%;
+    min-width: 0;
+    height: 52px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 12px 14px;
+    background: #ffffffd9;
+    color: var(--ink);
+    font-size: 16px;
+}
+input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid #277952; outline-offset: 3px; }
+.password-field { position: relative; }
+.password-field input { padding-right: 74px; }
+.visibility { position: absolute; right: 5px; top: 5px; height: 42px; width: 62px; border: 0; border-radius: 3px; background: transparent; color: var(--accent); font-size: 13px; font-weight: bold; }
+.visibility:hover { background: #e6eee8; }
+#status { color: var(--error); font-size: 14px; line-height: 1.5; min-height: 42px; margin: 0 0 16px; overflow-wrap: anywhere; }
+.primary { display: flex; gap: 12px; align-items: center; justify-content: center; width: 100%; min-height: 52px; padding: 12px 18px; border: 1px solid var(--accent); border-radius: 5px; background: var(--accent); color: #fff; font-weight: bold; text-decoration: none; }
+.primary:hover { background: var(--accent-hover); }
+.secondary { display: block; margin: 18px auto 0; border: 0; background: transparent; padding: 12px 20px; color: var(--muted); text-decoration: underline; }
+footer { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+.icon { font-family: 'Gate Icons'; font-style: normal; font-weight: 900; display: inline-block; width: 18px; text-align: center; }
+.eye::before { content: '\f06e'; }
+[aria-pressed='true'] .eye::before { content: '\f070'; }
+.arrow::before { content: '\f061'; }
+.lock::before { content: '\f023'; }
+.exit::before { content: '\f2f5'; }
+.print-mark { position: fixed; bottom: -65px; right: 30px; color: #24614606; font: 360px Georgia, serif; pointer-events: none; user-select: none; z-index: 0; }
+
+@keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 540px) {
+    .entrance { padding: 24px; }
+    .welcome { padding: 48px 0; }
+    h1 { font-size: 42px; }
+    .print-mark { display: none; }
+}
+@media (max-width: 350px) { h1 { font-size: 36px; } }
+@media (prefers-reduced-motion: reduce) { .welcome { animation: none; } }

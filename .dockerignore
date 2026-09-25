@@ -27,8 +27,11 @@
 /dist
 /node_modules
 /tests
+/test-results
 
 # --- Sensitive Info ---
+/config.yaml
+/config
 **/.env*
 **/*.pem
 **/certs

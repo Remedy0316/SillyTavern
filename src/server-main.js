@@ -44,6 +44,7 @@ import {
 
 import getWebpackServeMiddleware from './middleware/webpack-serve.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
+import { createBasicAuthLogin } from './middleware/basicAuthLogin.js';
 import getWhitelistMiddleware from './middleware/whitelist.js';
 import accessLoggerMiddleware, { getAccessLogPath, migrateAccessLog } from './middleware/accessLogWriter.js';
 import multerMonkeyPatch from './middleware/multerMonkeyPatch.js';
@@ -107,6 +108,25 @@ app.use(helmet({
 app.use(compression());
 app.use(responseTime());
 
+const basicAuthLoginPage = getConfigValue('basicAuthLoginPage', false, 'boolean');
+if (basicAuthLoginPage) {
+    if (!cliArgs.listen || !cliArgs.basicAuthMode
+        || getConfigValue('enableUserAccounts', false, 'boolean')
+        || getConfigValue('perUserBasicAuth', false, 'boolean')) {
+        throw new Error('basicAuthLoginPage requires listen and basicAuthMode, with enableUserAccounts and perUserBasicAuth disabled.');
+    }
+    app.use(createBasicAuthLogin({
+        getCredentials: () => ({
+            username: getConfigValue('basicAuthUser.username', ''),
+            password: getConfigValue('basicAuthUser.password', ''),
+        }),
+        publicRoot: path.join(serverDirectory, 'public'),
+        secureCookie: getConfigValue('basicAuthLoginSecureCookie', true, 'boolean'),
+        sessionHours: getConfigValue('basicAuthLoginSessionHours', 168, 'number'),
+        maxAttempts: getConfigValue('rateLimiting.basicAuthMaxAttempts', 5, 'number'),
+    }));
+}
+
 app.use(bodyParser.json({ limit: '500mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '500mb' }));
 
@@ -138,7 +158,7 @@ if (corsEnabled) {
     app.use(cors(corsOptions));
 }
 
-if (cliArgs.listen && cliArgs.basicAuthMode) {
+if (cliArgs.listen && cliArgs.basicAuthMode && !basicAuthLoginPage) {
     app.use(basicAuthMiddleware);
 }
 
