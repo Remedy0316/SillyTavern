@@ -93,13 +93,26 @@ Then add these two variables individually:
 | Variable | Value to enter |
 | --- | --- |
 | `SILLYTAVERN_BASICAUTHUSER_USERNAME` | Your new test username |
-| `SILLYTAVERN_BASICAUTHUSER_PASSWORD` | Your new strong test password |
+| `SILLYTAVERN_BASICAUTHUSER_PASSWORDHASH` | Your locally generated Argon2id hash |
 
-Enter the actual credential value in the individual value field, without adding
-wrapping quotes. Preserve any characters that are part of the password itself.
-Double-check both values are set before connecting the repository. Omitting them
-can leave ST using its bundled default credentials, which are unsuitable for a
-public deployment.
+With the root dependencies installed on your computer, run `npm run hash-password`
+and enter a new strong password twice in the hidden prompt. Save that password
+in your password manager. Paste the complete generated `$argon2id$...` line into
+the individual hash variable value field without wrapping quotes. Keep every
+`$` character intact. The hash includes its salt and parameters; no separate
+salt variable is needed. The helper does not save or echo the password.
+
+**Do not set `SILLYTAVERN_BASICAUTHUSER_PASSWORD`. Delete it if it already exists,
+even if its value is empty.** The dedicated login page requires the hash and
+refuses to start with the old plaintext environment variable. Remove custom
+plaintext credentials from config files as well. A missing, malformed, or
+unsupported hash blocks startup instead of using the bundled password.
+
+For an existing deployment, generate the hash from a **new** password and apply
+the hash addition and plaintext-variable deletion with the updated code. An
+automatic deployment of the new code before this migration will fail startup.
+Changing the hash/redeploying ends existing login sessions; sign in with the new
+password, never with the hash. No chat, character, or volume migration is needed.
 
 ### Why These Settings Matter
 
@@ -203,8 +216,9 @@ ST feature, the persistence of your data, or the strength of your password.
 3. In the runtime logs, look for ST listening on port **8000**, on **0.0.0.0**
    for IPv4. The selected data root should be `/home/node/app/data`.
 4. Confirm the deployment becomes healthy/active and is not repeatedly restarting.
-5. Review the source commit in the deployment details. It must include the login
-   feature from `1c6cf5341` or a later compatible revision of the fork.
+5. Review the source commit in the deployment details. It must include this
+   fork's Argon2id login update; the original login-page commit alone does not
+   support hash-only credentials.
 
 A first deployment can take several minutes. Railway mounts the volume at
 runtime, not during the Docker build. Do not diagnose an empty build-time data
@@ -344,7 +358,9 @@ all denial-of-service attempts or undo a stolen session cookie.
 To keep the new test service but return to the browser's original Basic Auth
 prompt:
 
-1. Keep `SILLYTAVERN_BASICAUTHMODE=true` and both credential variables unchanged.
+1. Keep `SILLYTAVERN_BASICAUTHMODE=true`, the username, and the password hash
+   unchanged. The current fork's browser Basic Auth mode supports the same hash;
+   do not restore the plaintext password variable.
 2. Set `SILLYTAVERN_BASICAUTHLOGINPAGE=false`.
 3. Clear the Railway health-check path before redeploying: `/basic-auth/login`
    will no longer be a public route in legacy mode. Leave health checking unset
@@ -354,6 +370,10 @@ prompt:
 
 To re-enable the page, set the option back to `true` and restore the health-check
 path to `/basic-auth/login` in the same staged deployment.
+
+Rolling back the code to a revision before Argon2id support is different: that
+code cannot authenticate using the hash variable. Keep a hash-capable revision
+when switching login modes.
 
 Keep your old instance unchanged until you have completed the checks and decided
 how to migrate. Code rollback and data restore are separate operations; a volume
@@ -376,9 +396,9 @@ them. Removing a public domain alone does not stop service or storage charges.
 | Public URL returns 502 or cannot connect | Runtime is listening on `0.0.0.0:8000`; domain target port is `8000`; process is not restarting. |
 | Browser Basic Auth popup instead of the new page | Deployed commit includes the feature; `SILLYTAVERN_BASICAUTHLOGINPAGE=true` was applied. Try a fresh private session to exclude cached Basic Auth. |
 | Login succeeds but ST returns 403 | Incoming localhost-only whitelist is disabled for this setup. If the message says invalid CSRF token, reload ST instead of disabling CSRF protection. |
-| Login returns 500 or "Authentication unavailable" | Both credential variables are nonempty strings; check service logs without sharing their values. |
+| Startup rejects credentials or login returns 500 | Set the username and complete Argon2id hash; delete the old plaintext password variable. Generate a fresh hash with `npm run hash-password` if needed. |
 | Cookie not retained or repeated sign-in | Use HTTPS, keep secure cookies enabled, allow cookies, use one replica, and check for repeated server restarts. |
-| HTTP 429 during login | Stop attempts for about a minute. Shared proxy limits may affect several visitors; do not disable the limiter as a fix. |
+| HTTP 429 during login | Follow `Retry-After`: busy hash checks retry after one second; failed-login limits may take a minute. Do not disable the limiter. |
 | Settings disappear after redeploy | Fresh volume is attached to this service at `/home/node/app/data`, matching `SILLYTAVERN_DATAROOT`. |
 | A global extension disappears | It was outside the data volume. Use a user-scoped install or plan separate persistence. |
 | Home-screen launch or AutoFill behaves differently | Confirm HTTPS/domain matching, AutoFill provider settings, current deployed metadata, and retest a newly added home-screen icon on the actual iPhone. |
@@ -388,6 +408,7 @@ them. Removing a public domain alone does not stop service or storage charges.
 - [ ] New project, service, volume, and domain are separate from the old instance.
 - [ ] Fork's `release` branch is deployed using the existing Dockerfile.
 - [ ] Test credentials are strong, saved privately, and distinct from the old login.
+- [ ] Railway stores the Argon2id hash; the plaintext password variable is deleted.
 - [ ] Port variables, listener, and domain target all agree on `8000`.
 - [ ] Data root and volume mount both equal `/home/node/app/data`.
 - [ ] Login works; wrong credentials and signed-out API requests are rejected.

@@ -4,6 +4,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 import { getIpAddress } from '../express-common.js';
+import { PasswordCheckBusyError, validatePasswordHash, verifyPasswordHash } from '../basic-auth-password.js';
 
 const LOGIN_PATH = '/basic-auth/login';
 const PUBLIC_ASSETS = new Map([
@@ -37,7 +38,7 @@ function safeDestination(value) {
 /**
  * Creates an independent, shared-credential gate. Sessions are intentionally process-local.
  * @param {object} options Configuration
- * @param {() => { username: string, password: string }} options.getCredentials Credential reader
+ * @param {() => { username: string, passwordHash: string }} options.getCredentials Credential reader
  * @param {string} options.publicRoot Bundled public directory
  * @param {boolean} [options.secureCookie] Require HTTPS cookies
  * @param {number} [options.sessionHours] Absolute session lifetime
@@ -52,6 +53,8 @@ export function createBasicAuthLogin({ getCredentials, publicRoot, secureCookie 
     if (!Number.isInteger(maxAttempts) || maxAttempts <= 0) {
         throw new Error('Form login requires rateLimiting.basicAuthMaxAttempts to be a positive integer.');
     }
+    // Fail startup, including the public health check, rather than expose a broken login page.
+    validatePasswordHash(getCredentials().passwordHash);
 
     const router = express.Router({ caseSensitive: true, strict: true });
     const secret = crypto.randomBytes(32);
@@ -67,11 +70,11 @@ export function createBasicAuthLogin({ getCredentials, publicRoot, secureCookie 
     router.use(async (request, response, next) => {
         try {
             const credentials = getCredentials();
-            if (typeof credentials.username !== 'string' || !credentials.username
-                || typeof credentials.password !== 'string' || !credentials.password) {
-                throw new Error('Form login requires nonempty Basic Auth credentials.');
+            if (typeof credentials.username !== 'string' || !credentials.username) {
+                throw new Error('Form login requires a nonempty Basic Auth username.');
             }
-            const version = sign(JSON.stringify([credentials.username, credentials.password]));
+            validatePasswordHash(credentials.passwordHash);
+            const version = sign(JSON.stringify([credentials.username, credentials.passwordHash]));
             const sessionId = request.cookies[sessionName];
             const session = typeof sessionId === 'string' ? sessions.get(sessionId) : undefined;
             const authenticated = !!session && session.expires > Date.now() && equal(session.version, version);
@@ -109,7 +112,7 @@ export function createBasicAuthLogin({ getCredentials, publicRoot, secureCookie 
                 const key = getIpAddress(request, preferRealIpHeader);
                 await limiter.consume(key);
                 const usernameMatches = equal(username, credentials.username);
-                const passwordMatches = equal(password, credentials.password);
+                const passwordMatches = await verifyPasswordHash(credentials.passwordHash, password);
                 if (usernameMatches && passwordMatches) {
                     await limiter.delete(key);
                     return true;
@@ -182,6 +185,10 @@ export function createBasicAuthLogin({ getCredentials, publicRoot, secureCookie 
     });
 
     function handleError(error, response) {
+        if (error instanceof PasswordCheckBusyError) {
+            response.set('Retry-After', '1');
+            return response.status(429).json({ error: 'Sign-in is busy. Please try again shortly.' });
+        }
         if (error instanceof RateLimiterRes) {
             response.set('Retry-After', String(Math.max(1, Math.ceil(error.msBeforeNext / 1000))));
             return response.status(429).json({ error: 'Too many attempts. Please wait a minute and try again.' });

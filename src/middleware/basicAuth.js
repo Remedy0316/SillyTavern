@@ -9,6 +9,7 @@ import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 import { getAllUserHandles, toKey, getPasswordHash } from '../users.js';
 import { getConfigValue, safeReadFileSync } from '../util.js';
 import { getIpAddress, retryAfter } from '../express-common.js';
+import { PasswordCheckBusyError, verifyPasswordHash } from '../basic-auth-password.js';
 
 const PER_USER_BASIC_AUTH = !!getConfigValue('perUserBasicAuth', false, 'boolean');
 const ENABLE_ACCOUNTS = !!getConfigValue('enableUserAccounts', false, 'boolean');
@@ -32,6 +33,7 @@ const basicAuthMiddleware = async function (request, response, callback) {
 
         const basicAuthUserName = getConfigValue('basicAuthUser.username');
         const basicAuthUserPassword = getConfigValue('basicAuthUser.password');
+        const basicAuthUserPasswordHash = getConfigValue('basicAuthUser.passwordHash', '');
         const authHeader = request.headers.authorization;
 
         if (!authHeader) {
@@ -56,7 +58,16 @@ const basicAuthMiddleware = async function (request, response, callback) {
             .split(':');
         const password = passwordParts.join(':');
 
-        if (!usePerUserAuth && username === basicAuthUserName && password === basicAuthUserPassword) {
+        if (!usePerUserAuth && basicAuthUserPasswordHash !== '') {
+            // Count before expensive verification, including concurrent attempts. Never fall back.
+            await basicAuthLimiter.consume(ip);
+            const passwordMatches = await verifyPasswordHash(basicAuthUserPasswordHash, password);
+            if (username === basicAuthUserName && passwordMatches) {
+                await basicAuthLimiter.delete(ip);
+                return callback();
+            }
+            return unauthorizedResponse(response);
+        } else if (!usePerUserAuth && username === basicAuthUserName && password === basicAuthUserPassword) {
             await basicAuthLimiter.delete(ip);
             return callback();
         } else if (usePerUserAuth) {
@@ -75,6 +86,9 @@ const basicAuthMiddleware = async function (request, response, callback) {
         await basicAuthLimiter.consume(ip);
         return unauthorizedResponse(response);
     } catch (error) {
+        if (error instanceof PasswordCheckBusyError) {
+            return response.set('Retry-After', '1').sendStatus(429);
+        }
         if (error instanceof RateLimiterRes) {
             console.error('Basic auth failed: Rate limited from', getIpAddress(request, PREFER_REAL_IP_HEADER), request.method, request.originalUrl);
             return retryAfter(response, error).sendStatus(429);

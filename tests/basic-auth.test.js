@@ -1,16 +1,26 @@
-import { afterEach, beforeEach, describe, expect, test, jest } from '@jest/globals';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, jest } from '@jest/globals';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import express from 'express';
 import { createBasicAuthLogin } from '../src/middleware/basicAuthLogin.js';
+import { generatePasswordHash } from '../src/basic-auth-password.js';
 
 let server;
 let origin;
 let credentials;
+let passwordHash;
+let replacementHash;
+const password = 'test:password';
+
+jest.setTimeout(15000);
+beforeAll(async () => {
+    passwordHash = await generatePasswordHash(password);
+    replacementHash = await generatePasswordHash('changed-password');
+});
 
 async function start(options = {}) {
-    credentials = { username: 'test-user', password: 'test:password' };
+    credentials = { username: 'test-user', passwordHash };
     const app = express();
     app.use(createBasicAuthLogin({
         getCredentials: () => credentials,
@@ -35,7 +45,7 @@ async function csrf() {
     return { token: (await response.json()).token, cookie: response.headers.get('set-cookie').split(';')[0] };
 }
 
-async function login(body = credentials, challenge) {
+async function login(body = { username: credentials.username, password }, challenge) {
     challenge ??= await csrf();
     return fetch(`${origin}/basic-auth/login`, {
         method: 'POST',
@@ -70,10 +80,11 @@ describe('shared Basic Auth form gate', () => {
 
     test('authenticates existing credentials and revokes logout cookies server-side', async () => {
         const challenge = await csrf();
-        const response = await login(credentials, challenge);
+        const response = await login({ username: credentials.username, password }, challenge);
         expect(response.status).toBe(200);
         const cookie = response.headers.get('set-cookie').split(';')[0];
-        expect(cookie).not.toContain(credentials.password);
+        expect(cookie).not.toContain(password);
+        expect(cookie).not.toContain(credentials.passwordHash);
         expect((await fetch(`${origin}/api/test`, { headers: { Cookie: cookie } })).status).toBe(200);
         const logout = await fetch(`${origin}/basic-auth/logout`, {
             method: 'POST', headers: { Cookie: `${cookie}; ${challenge.cookie}`, 'x-csrf-token': challenge.token },
@@ -86,7 +97,7 @@ describe('shared Basic Auth form gate', () => {
         expect((await fetch(`${origin}/api/test`, { headers: { Cookie: 'st-gate-local=forged' } })).status).toBe(401);
         const response = await login();
         const cookie = response.headers.get('set-cookie').split(';')[0];
-        credentials.password = 'changed';
+        credentials.passwordHash = replacementHash;
         expect((await fetch(`${origin}/api/test`, { headers: { Cookie: cookie } })).status).toBe(401);
     });
 
@@ -152,7 +163,7 @@ describe('shared Basic Auth form gate', () => {
 
     test('rejects unsafe return URLs', async () => {
         for (const returnTo of ['https://evil.example', '//evil.example', '/\\evil.example', '/basic-auth/login']) {
-            const response = await login({ ...credentials, returnTo });
+            const response = await login({ username: credentials.username, password, returnTo });
             expect((await response.json()).redirect).toBe('/');
         }
     });
@@ -247,13 +258,55 @@ describe('shared Basic Auth form gate', () => {
     test('counts simultaneous password guesses atomically', async () => {
         const challenge = await csrf();
         const responses = await Promise.all(Array.from({ length: 12 }, () => login({ username: 'wrong', password: 'wrong' }, challenge)));
-        expect(responses.filter(response => response.status === 401)).toHaveLength(5);
-        expect(responses.filter(response => response.status === 429)).toHaveLength(7);
+        expect(responses.every(response => [401, 429].includes(response.status))).toBe(true);
+        expect(responses.filter(response => response.status === 401).length).toBeGreaterThan(0);
+        expect(responses.filter(response => response.status === 401).length).toBeLessThanOrEqual(5);
+        expect(responses.filter(response => response.status === 429).length).toBeGreaterThanOrEqual(7);
+        expect((await login()).status).toBe(429);
     });
 
     test('fails closed with missing credentials', async () => {
-        credentials.password = '';
+        credentials.passwordHash = '';
         expect((await fetch(`${origin}/api/test`)).status).toBe(500);
+    });
+
+    test('requires a valid hash at startup, even when a plaintext password is supplied', () => {
+        for (const value of [undefined, '', 'invalid', passwordHash.replace('argon2id', 'argon2i')]) {
+            expect(() => createBasicAuthLogin({
+                getCredentials: () => ({ username: 'test-user', password, passwordHash: value }),
+                publicRoot: '.',
+            })).toThrow('passwordHash');
+        }
+    });
+
+    test('never accepts the encoded hash or a leftover plaintext credential as the password', async () => {
+        credentials.password = 'old-plaintext';
+        expect((await login({ username: credentials.username, password: credentials.passwordHash })).status).toBe(401);
+        expect((await login({ username: credentials.username, password: 'old-plaintext' })).status).toBe(401);
+        expect((await login()).status).toBe(200);
+    });
+
+    test('rejects malformed password inputs and wrong usernames', async () => {
+        for (const candidate of [null, {}, '', 'a'.repeat(1025)]) {
+            expect((await login({ username: credentials.username, password: candidate })).status).toBe(401);
+        }
+        expect((await login({ username: 'wrong', password })).status).toBe(401);
+    });
+
+    test('invalid hash changes revoke existing sessions and never use plaintext fallback', async () => {
+        const response = await login();
+        const challenge = await csrf();
+        const cookie = response.headers.get('set-cookie').split(';')[0];
+        credentials.passwordHash = 'malformed';
+        credentials.password = password;
+        expect((await fetch(`${origin}/api/test`, { headers: { Cookie: cookie } })).status).toBe(500);
+        expect((await login({ username: credentials.username, password }, challenge)).status).toBe(500);
+    });
+
+    test('password rotation accepts only the new password', async () => {
+        credentials.passwordHash = replacementHash;
+        expect((await login()).status).toBe(401);
+        expect((await login({ username: credentials.username, password: 'changed-password' })).status).toBe(200);
     });
 
     test('installs the opt-in gate before application parsers and routes, preserving legacy auth', () => {

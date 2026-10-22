@@ -7,13 +7,39 @@ LLM Frontend for Power Users
 For a separate Railway test project, follow the
 [step-by-step deployment guide](RAILWAY-DEPLOY.md).
 
-This fork includes a standalone login page for single-user deployments. It is
-disabled by default. It uses the existing `basicAuthUser.username` and
-`basicAuthUser.password` settings, including their environment overrides:
-`SILLYTAVERN_BASICAUTHUSER_USERNAME` and `SILLYTAVERN_BASICAUTHUSER_PASSWORD`.
-Environment variables take priority over configuration files.
+This fork includes a little standalone login page for single-user deployments.
+It is disabled by default and requires an **Argon2id password hash**. Your actual
+password stays out of Railway Variables; sign in with it as usual. 🌸
 
-To enable it on Railway, keep your existing strong credentials and set:
+### Set Up Your Password
+
+1. Install the root dependencies locally, then run `npm run hash-password`.
+   Enter a new, strong password twice in the hidden terminal prompt. The helper
+   prints only the salted hash; it does not save your password or accept it as a
+   command-line argument.
+2. Set `SILLYTAVERN_BASICAUTHUSER_USERNAME` to your username and
+   `SILLYTAVERN_BASICAUTHUSER_PASSWORDHASH` to the complete generated hash. Paste
+   it into Railway's individual variable value field, without wrapping quotes.
+3. **Delete `SILLYTAVERN_BASICAUTHUSER_PASSWORD`**, including an empty variable
+   with that name. The dedicated login page refuses to start while it exists.
+4. Apply these variable changes together with the updated deployment. Existing
+   login-page installations need this migration before the new version can start.
+
+Use a new password if the previous one may have been exposed. Hashing the old
+password does not undo an earlier leak. Remove any custom plaintext password
+from your configuration file too. Do not share your password in chat or use an
+online hash generator.
+
+The equivalent configuration keys are `basicAuthUser.username` and
+`basicAuthUser.passwordHash`; environment variables take priority. A missing or
+invalid hash blocks login-page startup, with no plaintext fallback. The helper
+uses Argon2id v19, 64 MiB, three iterations, one lane, and a random 16-byte salt.
+Accepted hashes use 19–64 MiB, 2–6 iterations, 1–4 lanes, 16–64-byte salts, and
+32–64-byte outputs. Passwords may contain up to 1024 UTF-8 bytes. Verification
+allows at most two concurrent checks per process; busy attempts return HTTP 429.
+Authenticated cookie requests do not repeat password hashing.
+
+To enable the page on Railway, set:
 
 ```text
 SILLYTAVERN_BASICAUTHLOGINPAGE=true
@@ -79,8 +105,12 @@ enabling global proxy trust. For loopback-only HTTP testing, explicitly set
 - On expiry, APIs return HTTP 401 rather than login HTML. Open the login page
 	and sign in again; no global frontend or extension interception is added.
 
-Switch `basicAuthLoginPage` off and restart to return to unchanged browser Basic
-Auth. Before changing a Railway deployment source, back up the persistent
+Switch `basicAuthLoginPage` off and restart to return to browser Basic Auth,
+which also accepts the same hash. A configured hash always overrides the old
+plaintext setting, including the bundled default; malformed hashes never fall
+back. Upstream plaintext Basic Auth remains available only when the dedicated
+page is off and no hash is configured. Per-user account authentication is unchanged.
+Before changing a Railway deployment source, back up the persistent
 volume and verify its mount path still matches the configured data directory.
 If you use a Railway health check, `/basic-auth/login` is a public, read-only
 path suitable for that check. Existing protected health-check paths still
@@ -115,13 +145,15 @@ can still affect the viewport.
 With the root and test dependencies installed, run:
 
 ```sh
-npm --prefix tests run test:unit -- --runInBand basic-auth.test.js
+npm --prefix tests run test:unit -- --runInBand basic-auth.test.js basic-auth-password.test.js basic-auth-legacy.test.js basic-auth-startup.test.js
 ```
 
 Tests cover unauthenticated access, asset allowlisting, CSRF, rate limiting,
 cookie security, session revocation/expiry, credential changes, Basic headers,
 redirect validation, upload/stream passthrough, middleware ordering, PWA metadata
-access, and password-manager-friendly submission behavior.
+access, password-manager-friendly submission, hash-only authentication, hash
+rotation, bounded verification, the hidden local password prompt, and actual
+server startup with missing hashes or leftover plaintext variables.
 
 ## Resources
 

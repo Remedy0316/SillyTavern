@@ -110,6 +110,9 @@ app.use(responseTime());
 
 const basicAuthLoginPage = getConfigValue('basicAuthLoginPage', false, 'boolean');
 if (basicAuthLoginPage) {
+    if ('SILLYTAVERN_BASICAUTHUSER_PASSWORD' in process.env) {
+        throw new Error('Remove SILLYTAVERN_BASICAUTHUSER_PASSWORD and set SILLYTAVERN_BASICAUTHUSER_PASSWORDHASH. The login page requires Argon2id.');
+    }
     if (!cliArgs.listen || !cliArgs.basicAuthMode
         || getConfigValue('enableUserAccounts', false, 'boolean')
         || getConfigValue('perUserBasicAuth', false, 'boolean')) {
@@ -118,7 +121,7 @@ if (basicAuthLoginPage) {
     app.use(createBasicAuthLogin({
         getCredentials: () => ({
             username: getConfigValue('basicAuthUser.username', ''),
-            password: getConfigValue('basicAuthUser.password', ''),
+            passwordHash: getConfigValue('basicAuthUser.passwordHash', ''),
         }),
         publicRoot: path.join(serverDirectory, 'public'),
         secureCookie: getConfigValue('basicAuthLoginSecureCookie', true, 'boolean'),

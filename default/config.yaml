@@ -72,6 +72,9 @@ basicAuthMode: false
 basicAuthUser:
   username: "user"
   password: "password"
+  # Required for the dedicated login page; also overrides password in shared Basic Auth.
+  # Generate locally with npm run hash-password. Never put the actual password here.
+  passwordHash: ""
 # Enables CORS proxy middleware
 enableCorsProxy: false
 # CORS settings (applied to all routes)

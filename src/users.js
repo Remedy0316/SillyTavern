@@ -186,7 +186,8 @@ export async function verifySecuritySettings() {
         } else if (!perUserBasicAuth) {
             const basicAuthUserName = getConfigValue('basicAuthUser.username', '');
             const basicAuthUserPassword = getConfigValue('basicAuthUser.password', '');
-            if (!basicAuthUserName || !basicAuthUserPassword) {
+            const basicAuthUserPasswordHash = getConfigValue('basicAuthUser.passwordHash', '');
+            if (!basicAuthUserName || (!basicAuthUserPassword && !basicAuthUserPasswordHash)) {
                 console.warn(color.yellow(
                     'Basic Authentication is enabled, but username or password is not set or empty!',
                 ));
